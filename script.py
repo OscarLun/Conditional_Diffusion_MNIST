@@ -253,18 +253,31 @@ class DDPM(nn.Module):
         # return MSE between added noise, and our predicted noise
         return self.loss_mse(noise, self.nn_model(x_t, c, _ts / self.n_T, context_mask))
 
-    def sample(self, n_sample, size, device, guide_w = 0.0):
+    def sample(self, n_sample, size, device, guide_w = 0.0, target_digit=None):
         # we follow the guidance sampling scheme described in 'Classifier-Free Diffusion Guidance'
         # to make the fwd passes efficient, we concat two versions of the dataset,
         # one with context_mask=0 and the other context_mask=1
         # we then mix the outputs with the guidance scale, w
         # where w>0 means more guidance
 
-        x_i = torch.randn(n_sample, *size).to(device)  # x_T ~ N(0, 1), sample initial noise
-        c_i = torch.arange(0,10).to(device) # context for us just cycles throught the mnist labels
-        c_i = c_i.repeat(int(n_sample/c_i.shape[0]))
+        # x_T ~ N(0, 1): sample initial noise
+        x_i = torch.randn(n_sample, *size).to(device)
+        n_classes = 10  # MNIST digits: 0-9
 
-        # don't drop context at test time
+        # Create context labels based on target_digit if provided
+        if target_digit is not None:
+            # Validate that target_digit is between 0 and 9
+            assert 0 <= target_digit < n_classes, "target_digit must be between 0 and 9"
+            c_i = torch.full((n_sample,), target_digit, dtype=torch.long, device=device)
+        else:
+            # Default behavior: cycle through all classes if possible
+            if n_sample < n_classes:
+                c_i = torch.randint(0, n_classes, (n_sample,)).to(device)
+            else:
+                reps = (n_sample + n_classes - 1) // n_classes  # number of repeats needed
+                c_i = torch.arange(0, n_classes).to(device).repeat(reps)[:n_sample]
+
+        #  No context dropout during sampling
         context_mask = torch.zeros_like(c_i).to(device)
 
         # double the batch
@@ -396,7 +409,7 @@ def train_mnist():
             print('saved model at ' + save_dir + f"model_{ep}.pth")
 
 
-def sample_pretrained_model(model_path="model_39.pth", n_sample=40, guide_w=0.0, save_dir='./data/diffusion_outputs10/'):
+def sample_pretrained_model(model_path="model_39.pth", n_sample=40, guide_w=0.0, save_dir='./data/diffusion_outputs10/', target_digit=None):
     """
     Loads a pre-trained model and performs sampling without any training.
     """
@@ -424,7 +437,7 @@ def sample_pretrained_model(model_path="model_39.pth", n_sample=40, guide_w=0.0,
     
     # Perform sampling; you can adjust guide_w for stronger or weaker conditioning.
     with torch.no_grad():
-        x_gen, x_gen_store = ddpm.sample(n_sample, (1, 28, 28), device, guide_w=guide_w)
+        x_gen, x_gen_store = ddpm.sample(n_sample, (1, 28, 28), device, guide_w=guide_w, target_digit=target_digit)
     
 
     # Ensure the save directory exists
@@ -471,10 +484,12 @@ if __name__ == "__main__":
                     help='Number of samples to generate.')
     parser.add_argument('--guide_w', type=float, default=0.0,
                         help='Guidance weight for conditional sampling. Increase for stronger conditioning.')
+    parser.add_argument('-d', '--target_digit', type=int, default=None,
+                        help='Target digit to sample. If provided (0-9), only samples images for this digit.')
     args = parser.parse_args()
 
     if args.mode == 'train':
         # Assuming your training function is called train_mnist
         train_mnist()
     else:
-        sample_pretrained_model(model_path=args.model_path, guide_w=args.guide_w,  n_sample=args.num_samples)
+        sample_pretrained_model(model_path=args.model_path, guide_w=args.guide_w,  n_sample=args.num_samples, target_digit=args.target_digit)
