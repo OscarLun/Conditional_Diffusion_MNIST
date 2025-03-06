@@ -28,6 +28,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
 import numpy as np
 import argparse
+import os
 
 class ResidualConvBlock(nn.Module):
     def __init__(
@@ -425,6 +426,10 @@ def sample_pretrained_model(model_path="model_39.pth", n_sample=40, guide_w=0.0,
     with torch.no_grad():
         x_gen, x_gen_store = ddpm.sample(n_sample, (1, 28, 28), device, guide_w=guide_w)
     
+
+    # Ensure the save directory exists
+    os.makedirs(save_dir, exist_ok=True)
+
     # Save the generated samples as an image grid.
     grid = make_grid(x_gen * -1 + 1, nrow=10)
     output_path = save_dir + f"sample_w{guide_w}.png"
