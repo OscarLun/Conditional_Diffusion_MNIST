@@ -410,18 +410,16 @@ def train_mnist():
 
 
 def sample_pretrained_model(model_path="model_39.pth", n_sample=40, guide_w=0.0, save_dir='./data/diffusion_outputs10/', target_digit=None):
-    """
-    Loads a pre-trained model and performs sampling without any training.
-    """
-    # Set device (CUDA if available, else CPU)
+    import os
+    os.makedirs(save_dir, exist_ok=True)  # Ensure save directory exists
+
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     
-    # These hyperparameters should match what was used during training.
-    n_T = 400       # total diffusion timesteps
-    n_classes = 10  # MNIST digits 0-9
-    n_feat = 128    # feature map size used in the network
+    # Hyperparameters must match training
+    n_T = 400       
+    n_classes = 10  
+    n_feat = 128    
     
-    # Instantiate the DDPM model with the U-Net
     ddpm = DDPM(
         nn_model=ContextUnet(in_channels=1, n_feat=n_feat, n_classes=n_classes),
         betas=(1e-4, 0.02),
@@ -431,47 +429,56 @@ def sample_pretrained_model(model_path="model_39.pth", n_sample=40, guide_w=0.0,
     )
     ddpm.to(device)
     
-    # Load the pre-trained model weights
+    # Load pre-trained model weights
     ddpm.load_state_dict(torch.load(model_path, map_location=device))
-    ddpm.eval()  # set the model to evaluation mode
+    ddpm.eval()
     
-    # Perform sampling; you can adjust guide_w for stronger or weaker conditioning.
     with torch.no_grad():
         x_gen, x_gen_store = ddpm.sample(n_sample, (1, 28, 28), device, guide_w=guide_w, target_digit=target_digit)
     
-
-    # Ensure the save directory exists
-    os.makedirs(save_dir, exist_ok=True)
-
-    # Save the generated samples as an image grid.
     grid = make_grid(x_gen * -1 + 1, nrow=10)
-    output_path = save_dir + f"sample_w{guide_w}.png"
+    output_path = os.path.join(save_dir, f"sample_w{guide_w}.png")
     save_image(grid, output_path)
     print("Saved generated sample image at", output_path)
     
-    # (Optional) Create an animated GIF to visualize the denoising process.
-    # For instance:
-    if x_gen_store is not None:
-        x_gen_store = np.array(x_gen_store)
-        fig, axs = plt.subplots(nrows=int(n_sample/n_classes), ncols=n_classes,
-                        sharex=True, sharey=True, figsize=(8,3), squeeze=False)
-        
-        def animate_diff(i):
-            for row in range(int(n_sample/n_classes)):
-                for col in range(n_classes):
-                    axs[row, col].clear()
-                    axs[row, col].set_xticks([])
-                    axs[row, col].set_yticks([])
-                    axs[row, col].imshow(-x_gen_store[i, (row*n_classes)+col, 0],
+    # Prepare layout for animated GIF visualization:
+    # If a target digit is specified, display all samples in a single row.
+    if target_digit is None:
+        n_rows = int(n_sample / n_classes)
+        n_cols = n_classes
+        # In case n_sample is not a multiple of n_classes, ensure at least one row.
+        if n_rows < 1:
+            n_rows = 1
+    else:
+        n_rows = 1
+        n_cols = n_sample
+    
+    fig, axs = plt.subplots(nrows=n_rows, ncols=n_cols,
+                            sharex=True, sharey=True, figsize=(8,3), squeeze=False)
+    
+    def animate_diff(i):
+        for row in range(n_rows):
+            for col in range(n_cols):
+                axs[row, col].clear()
+                axs[row, col].set_xticks([])
+                axs[row, col].set_yticks([])
+                # Calculate index into x_gen_store. Adjust indexing based on your layout.
+                # For the default case (target_digit is None), we use (row*n_cols + col).
+                # For a target_digit case, it's simply (col) since there's only one row.
+                idx = (row * n_cols + col) if target_digit is None else col
+                # Check index bounds
+                if idx < x_gen_store.shape[1]:
+                    axs[row, col].imshow(-x_gen_store[i, idx, 0],
                                           cmap='gray',
                                           vmin=(-x_gen_store[i]).min(),
                                           vmax=(-x_gen_store[i]).max())
-            return axs
-        ani = FuncAnimation(fig, animate_diff, frames=x_gen_store.shape[0],
-                            interval=200, blit=False, repeat=True)
-        gif_path = save_dir + f"gif_w{guide_w}.gif"
-        ani.save(gif_path, dpi=100, writer=PillowWriter(fps=5))
-        print("Saved animated GIF at", gif_path)
+        return axs
+    
+    ani = FuncAnimation(fig, animate_diff, frames=x_gen_store.shape[0],
+                        interval=200, blit=False, repeat=True)
+    gif_path = os.path.join(save_dir, f"gif_w{guide_w}.gif")
+    ani.save(gif_path, dpi=100, writer=PillowWriter(fps=5))
+    print("Saved animated GIF at", gif_path)
 
 if __name__ == "__main__":
     
