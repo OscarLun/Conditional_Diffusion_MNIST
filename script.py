@@ -441,7 +441,8 @@ def sample_pretrained_model(model_path="model_39.pth", n_sample=40, guide_w=0.0,
     if x_gen_store is not None:
         x_gen_store = np.array(x_gen_store)
         fig, axs = plt.subplots(nrows=int(n_sample/n_classes), ncols=n_classes,
-                                sharex=True, sharey=True, figsize=(8,3))
+                        sharex=True, sharey=True, figsize=(8,3), squeeze=False)
+        
         def animate_diff(i):
             for row in range(int(n_sample/n_classes)):
                 for col in range(n_classes):
