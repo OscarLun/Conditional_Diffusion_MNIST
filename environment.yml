@@ -1,0 +1,12 @@
+name: diffusion-mnist
+channels:
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.9
+  - pytorch
+  - torchvision
+  - matplotlib
+  - tqdm
+  - numpy
+  - pip
